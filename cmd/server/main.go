@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"in-memory-queue/internal/handler"
+	"in-memory-queue/internal/logging"
 	"in-memory-queue/internal/repository"
 	"in-memory-queue/internal/service"
 )
@@ -30,9 +32,14 @@ type config struct {
 	shutdownTimeout   time.Duration
 }
 
-func loadConfig() config {
+func loadConfig() (config, error) {
+	port, err := getEnvPort("PORT", 8080)
+	if err != nil {
+		return config{}, err
+	}
+
 	cfg := config{
-		listenAddress:     getEnv("LISTEN_ADDRESS", fmt.Sprintf(":%d", getEnvInt("PORT", 8080))),
+		listenAddress:     getEnv("LISTEN_ADDRESS", fmt.Sprintf(":%d", port)),
 		defaultQueueDepth: getEnvInt("MAX_QUEUE_DEPTH", 10000),
 		maxMessageSize:    getEnvInt("MAX_MESSAGE_BODY_SIZE", 256*1024),
 		maxAttributes:     getEnvInt("MAX_ATTRIBUTES", 10),
@@ -53,8 +60,14 @@ func loadConfig() config {
 	flag.DurationVar(&cfg.idleTimeout, "idle-timeout", cfg.idleTimeout, "HTTP idle timeout")
 	flag.DurationVar(&cfg.shutdownTimeout, "shutdown-timeout", cfg.shutdownTimeout, "Graceful shutdown timeout")
 	flag.Parse()
+	if err := validateListenAddress(cfg.listenAddress); err != nil {
+		return config{}, err
+	}
+	if err := logging.ValidateLevel(cfg.logLevel); err != nil {
+		return config{}, err
+	}
 
-	return cfg
+	return cfg, nil
 }
 
 func getEnv(key, defaultValue string) string {
@@ -72,6 +85,31 @@ func getEnvInt(key string, defaultValue int) int {
 	return value
 }
 
+func getEnvPort(key string, defaultValue int) (int, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue, nil
+	}
+
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%s must be a number between 1 and 65535", key)
+	}
+	return port, nil
+}
+
+func validateListenAddress(address string) error {
+	_, portValue, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("listen address must be in host:port format: %w", err)
+	}
+	port, err := strconv.Atoi(portValue)
+	if err != nil || port < 1 || port > 65535 {
+		return errors.New("listen address port must be a number between 1 and 65535")
+	}
+	return nil
+}
+
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	value, err := time.ParseDuration(os.Getenv(key))
 	if err != nil || value <= 0 {
@@ -81,9 +119,18 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 }
 
 func main() {
-	cfg := loadConfig()
-	log.Printf("[INFO] log level configured: %s", cfg.logLevel)
-
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Printf("[ERROR] invalid configuration: %v", err)
+		return
+	}
+	if err := logging.Configure(cfg.logLevel); err != nil {
+		log.Printf("[ERROR] invalid log configuration: %v", err)
+		return
+	}
+	logging.Infof("log level configured: %s", cfg.logLevel)
+	// Explain me the architecture of the agent that u ahve studied till now what that ur manager said
+	//u were stying right tiull niw that u explain me now fast
 	repo := repository.NewMemoryRepository()
 	queueService := service.NewQueueService(repo, cfg.defaultQueueDepth, cfg.maxMessageSize, cfg.maxAttributes)
 	queueHandler := handler.NewQueueHandler(queueService)

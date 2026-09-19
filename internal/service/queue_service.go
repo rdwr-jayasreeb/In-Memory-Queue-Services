@@ -2,20 +2,24 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"in-memory-queue/internal/model"
 	"in-memory-queue/internal/repository"
 )
 
-const maxAllowedMessageSize = 256 * 1024
+const (
+	maxAllowedMessageSize   = 256 * 1024
+	maxAllowedQueueDepth    = 1_000_000
+	maxAttributeKeyLength   = 128
+	maxAttributeValueLength = 1024
+)
 
-var messageSequence uint64
 var queueMutex sync.RWMutex
 
 type queueService struct {
@@ -25,6 +29,7 @@ type queueService struct {
 	maxAttributes  int
 }
 
+// NewQueueService creates a queue service with the supplied defaults and limits.
 func NewQueueService(repo repository.QueueRepository, defaultDepth int, maxMessageSizes ...int) QueueService {
 	if repo == nil {
 		repo = repository.NewMemoryRepository()
@@ -81,7 +86,10 @@ func (s *queueService) CreateQueue(ctx context.Context, name string, maxDepths .
 		return nil, errors.New("queue already exists")
 	}
 	maxDepth := s.defaultDepth
-	if len(maxDepths) > 0 && maxDepths[0] > 0 {
+	if len(maxDepths) > 0 {
+		if maxDepths[0] < 1 || maxDepths[0] > maxAllowedQueueDepth {
+			return nil, model.ErrInvalidQueueDepth
+		}
 		maxDepth = maxDepths[0]
 	}
 	queue := &model.Queue{Name: name, MaxDepth: maxDepth, Messages: []model.Message{}, CreatedAt: time.Now()}
@@ -157,7 +165,7 @@ func (s *queueService) Enqueue(ctx context.Context, name, body string, attribute
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(attributes) > s.maxAttributes {
+	if !validAttributes(attributes, s.maxAttributes) {
 		log.Printf("[WARN] message rejected: queue=%s reason=too_many_attributes count=%d", name, len(attributes))
 		return nil, model.ErrInvalidAttributes
 	}
@@ -178,11 +186,38 @@ func (s *queueService) Enqueue(ctx context.Context, name, body string, attribute
 		log.Printf("[WARN] enqueue rejected: queue=%s reason=queue_full depth=%d", name, queue.MaxDepth)
 		return nil, model.ErrQueueFull
 	}
-	message := model.Message{ID: fmt.Sprintf("MSG%08d", atomic.AddUint64(&messageSequence, 1)), Body: body, Attributes: attributes, EnqueuedAt: time.Now()}
+	messageID, err := newMessageID()
+	if err != nil {
+		return nil, fmt.Errorf("generate message ID: %w", err)
+	}
+	message := model.Message{ID: messageID, Body: body, Attributes: attributes, EnqueuedAt: time.Now()}
 	queue.Messages = append(queue.Messages, message)
 	queue.CurrentMsgs++
 	log.Printf("[INFO] message added: queue=%s message_id=%s", name, message.ID)
 	return &message, nil
+}
+
+func validAttributes(attributes map[string]string, maxAttributes int) bool {
+	if len(attributes) > maxAttributes {
+		return false
+	}
+	for key, value := range attributes {
+		if len(key) == 0 || len(key) > maxAttributeKeyLength || len(value) > maxAttributeValueLength {
+			return false
+		}
+	}
+	return true
+}
+
+func newMessageID() (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", err
+	}
+	value[6] = value[6]&0x0f | 0x40
+	value[8] = value[8]&0x3f | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		value[0:4], value[4:6], value[6:8], value[8:10], value[10:16]), nil
 }
 
 func (s *queueService) Dequeue(ctx context.Context, name string) (*model.Message, error) {

@@ -100,3 +100,16 @@ func TestHandlerMessageValidationAndCapacity(t *testing.T) {
 	full := request(h.QueueResource, http.MethodPost, "/queues/orders/messages", `{"body":"two"}`)
 	assertError(t, full, http.StatusConflict, "queue_full")
 }
+
+func TestHandlerRejectsInvalidRequestFields(t *testing.T) {
+	h := NewQueueHandler(service.NewQueueService(repository.NewMemoryRepository(), 10))
+
+	invalidDepthType := request(h.Queues, http.MethodPost, "/queues", `{"name":"orders","max_depth":"ten"}`)
+	assertError(t, invalidDepthType, http.StatusBadRequest, "invalid_request")
+
+	invalidDepthRange := request(h.Queues, http.MethodPost, "/queues", `{"name":"orders","max_depth":0}`)
+	assertError(t, invalidDepthRange, http.StatusBadRequest, "invalid_queue_depth")
+
+	unknownField := request(h.Queues, http.MethodPost, "/queues", `{"name":"orders","unexpected":true}`)
+	assertError(t, unknownField, http.StatusBadRequest, "invalid_request")
+}

@@ -1,3 +1,4 @@
+// Package service implements queue business operations.
 package service
 
 import (
@@ -6,6 +7,7 @@ import (
 	"in-memory-queue/internal/model"
 )
 
+// QueueService provides validated queue and message operations.
 type QueueService interface {
 	CreateQueue(ctx context.Context, name string, maxDepth ...int) (*model.Queue, error)
 	GetQueue(ctx context.Context, name string) (*model.Queue, error)

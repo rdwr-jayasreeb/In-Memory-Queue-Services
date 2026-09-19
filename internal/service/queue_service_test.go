@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -42,7 +43,12 @@ func TestEnqueueStoresAttributesAndEnqueuedAt(t *testing.T) {
 	if message.ID == "" {
 		t.Fatal("expected a generated message ID")
 	}
+	if !uuidV4Pattern.MatchString(message.ID) {
+		t.Fatalf("expected UUIDv4 message ID, got %q", message.ID)
+	}
 }
+
+var uuidV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func TestEnqueueGeneratesUniqueIDsAndDequeueIsFIFO(t *testing.T) {
 	queueService := NewQueueService(repository.NewMemoryRepository(), 10)
@@ -176,6 +182,23 @@ func TestEnqueueRejectsMoreThanTenAttributes(t *testing.T) {
 	}
 }
 
+func TestEnqueueRejectsInvalidAttributeSizes(t *testing.T) {
+	queueService := NewQueueService(repository.NewMemoryRepository(), 10)
+	if _, err := queueService.CreateQueue(context.Background(), "orders"); err != nil {
+		t.Fatalf("create queue: %v", err)
+	}
+
+	attributes := map[string]string{strings.Repeat("a", maxAttributeKeyLength+1): "value"}
+	if _, err := queueService.Enqueue(context.Background(), "orders", "order-1", attributes); !errors.Is(err, model.ErrInvalidAttributes) {
+		t.Fatalf("expected invalid attribute key error, got %v", err)
+	}
+
+	attributes = map[string]string{"key": strings.Repeat("a", maxAttributeValueLength+1)}
+	if _, err := queueService.Enqueue(context.Background(), "orders", "order-1", attributes); !errors.Is(err, model.ErrInvalidAttributes) {
+		t.Fatalf("expected invalid attribute value error, got %v", err)
+	}
+}
+
 func TestEnqueueRejectsBodyOver256KB(t *testing.T) {
 	queueService := NewQueueService(repository.NewMemoryRepository(), 10)
 	if _, err := queueService.CreateQueue(context.Background(), "orders"); err != nil {
@@ -185,6 +208,16 @@ func TestEnqueueRejectsBodyOver256KB(t *testing.T) {
 	_, err := queueService.Enqueue(context.Background(), "orders", strings.Repeat("a", 256*1024+1), nil)
 	if !errors.Is(err, model.ErrMessageTooLarge) {
 		t.Fatalf("expected message too large error, got %v", err)
+	}
+}
+
+func TestCreateQueueRejectsInvalidExplicitDepth(t *testing.T) {
+	queueService := NewQueueService(repository.NewMemoryRepository(), 10)
+	if _, err := queueService.CreateQueue(context.Background(), "zero-depth", 0); !errors.Is(err, model.ErrInvalidQueueDepth) {
+		t.Fatalf("expected invalid zero depth error, got %v", err)
+	}
+	if _, err := queueService.CreateQueue(context.Background(), "large-depth", maxAllowedQueueDepth+1); !errors.Is(err, model.ErrInvalidQueueDepth) {
+		t.Fatalf("expected invalid large depth error, got %v", err)
 	}
 }
 

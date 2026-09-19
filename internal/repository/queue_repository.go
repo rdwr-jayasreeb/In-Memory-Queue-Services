@@ -6,10 +6,12 @@ import (
 	"in-memory-queue/internal/model"
 )
 
+// MemoryRepository stores queues in process memory.
 type MemoryRepository struct {
 	queues map[string]*model.Queue
 }
 
+// NewMemoryRepository creates an empty in-memory queue repository.
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
 		queues: make(map[string]*model.Queue)}
@@ -22,6 +24,7 @@ func checkContext(ctx context.Context) error {
 	return ctx.Err()
 }
 
+// Create stores queue by its name.
 func (r *MemoryRepository) Create(ctx context.Context, queue *model.Queue) error {
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -30,6 +33,7 @@ func (r *MemoryRepository) Create(ctx context.Context, queue *model.Queue) error
 	return nil
 }
 
+// List returns all stored queues.
 func (r *MemoryRepository) List(ctx context.Context) ([]*model.Queue, error) {
 	if err := checkContext(ctx); err != nil {
 		return nil, err
@@ -41,6 +45,7 @@ func (r *MemoryRepository) List(ctx context.Context) ([]*model.Queue, error) {
 	return queues, nil
 }
 
+// Get returns the queue with name and whether it exists.
 func (r *MemoryRepository) Get(ctx context.Context, name string) (*model.Queue, bool, error) {
 	if err := checkContext(ctx); err != nil {
 		return nil, false, err
@@ -49,6 +54,7 @@ func (r *MemoryRepository) Get(ctx context.Context, name string) (*model.Queue, 
 	return queue, exists, nil
 }
 
+// Delete removes the queue with name and reports whether it existed.
 func (r *MemoryRepository) Delete(ctx context.Context, name string) (bool, error) {
 	if err := checkContext(ctx); err != nil {
 		return false, err

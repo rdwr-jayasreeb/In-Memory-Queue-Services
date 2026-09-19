@@ -1,3 +1,4 @@
+// Package handler exposes HTTP endpoints for queue operations.
 package handler
 
 import (
@@ -5,17 +6,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
 	"strings"
 
+	"in-memory-queue/internal/logging"
 	"in-memory-queue/internal/model"
 	"in-memory-queue/internal/service"
 )
 
 type queueRequest struct {
 	Name     string `json:"name"`
-	MaxDepth int    `json:"max_depth"`
+	MaxDepth *int   `json:"max_depth"`
 }
 
 type messageRequest struct {
@@ -31,10 +33,12 @@ type queueResponse struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+// QueueHandler routes HTTP queue requests to a QueueService.
 type QueueHandler struct {
 	service service.QueueService
 }
 
+// NewQueueHandler creates a handler backed by queueService.
 func NewQueueHandler(queueService service.QueueService) *QueueHandler {
 	return &QueueHandler{service: queueService}
 }
@@ -67,13 +71,21 @@ func (h *QueueHandler) QueueResource(response http.ResponseWriter, request *http
 
 func (h *QueueHandler) createQueue(response http.ResponseWriter, request *http.Request) {
 	var input queueRequest
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-		log.Printf("[WARN] invalid request: method=%s path=%s reason=invalid_json", request.Method, request.URL.Path)
+	if err := decodeJSON(request.Body, &input); err != nil {
+		logging.Warnf("invalid request: method=%s path=%s reason=invalid_json", request.Method, request.URL.Path)
 		writeError(response, http.StatusBadRequest, "invalid_request", "Invalid request body")
 		return
 	}
-	queue, err := h.service.CreateQueue(request.Context(), input.Name, input.MaxDepth)
+	maxDepths := []int{}
+	if input.MaxDepth != nil {
+		maxDepths = append(maxDepths, *input.MaxDepth)
+	}
+	queue, err := h.service.CreateQueue(request.Context(), input.Name, maxDepths...)
 	if err != nil {
+		if errors.Is(err, model.ErrInvalidQueueDepth) {
+			writeError(response, http.StatusBadRequest, "invalid_queue_depth", "Queue max depth must be between 1 and 1000000")
+			return
+		}
 		if strings.Contains(err.Error(), "already exists") {
 			writeError(response, http.StatusConflict, "queue_already_exists", "Queue '"+input.Name+"' already exists")
 			return
@@ -145,7 +157,7 @@ func (h *QueueHandler) enqueueMessage(response http.ResponseWriter, request *htt
 	request.Body = http.MaxBytesReader(response, request.Body, maxRequestBodyBytes)
 	var input messageRequest
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil || input.Body == "" {
-		log.Printf("[WARN] invalid message request: method=%s path=%s", request.Method, request.URL.Path)
+		logging.Warnf("invalid message request: method=%s path=%s", request.Method, request.URL.Path)
 		writeError(response, http.StatusBadRequest, "invalid_message", "Message body is required")
 		return
 	}
@@ -213,7 +225,7 @@ func writeOperationError(response http.ResponseWriter, err error) {
 	if writeContextError(response, err) {
 		return
 	}
-	log.Printf("[ERROR] operation failed: %v", err)
+	logging.Errorf("operation failed: %v", err)
 	writeError(response, http.StatusInternalServerError, "internal_error", "Operation failed")
 }
 
@@ -249,19 +261,34 @@ func writeError(response http.ResponseWriter, status int, code, message string) 
 	writeJSON(response, status, map[string]string{"error": code, "message": message})
 }
 
+func decodeJSON(body io.Reader, target any) error {
+	decoder := json.NewDecoder(body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return errors.New("request body must contain one JSON object")
+	}
+	return nil
+}
+
 func itoa(value int) string {
 	return fmt.Sprintf("%d", value)
 }
 
 // The following methods preserve the earlier query-string routes.
+// CreateQueue handles legacy queue creation requests.
 func (h *QueueHandler) CreateQueue(response http.ResponseWriter, request *http.Request) {
 	h.Queues(response, request)
 }
 
+// ListQueues handles legacy queue-list requests.
 func (h *QueueHandler) ListQueues(response http.ResponseWriter, request *http.Request) {
 	h.listQueues(response, request)
 }
 
+// DeleteQueue handles legacy queue deletion requests.
 func (h *QueueHandler) DeleteQueue(response http.ResponseWriter, request *http.Request) {
 	name := request.URL.Query().Get("name")
 	if err := h.service.DeleteQueue(request.Context(), name); err != nil {
@@ -271,6 +298,7 @@ func (h *QueueHandler) DeleteQueue(response http.ResponseWriter, request *http.R
 	response.WriteHeader(http.StatusNoContent)
 }
 
+// Enqueue handles legacy message enqueue requests.
 func (h *QueueHandler) Enqueue(response http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		request.Body = http.MaxBytesReader(response, request.Body, maxRequestBodyBytes)
@@ -290,10 +318,12 @@ func (h *QueueHandler) Enqueue(response http.ResponseWriter, request *http.Reque
 	h.enqueueInput(response, request, input.Name, input)
 }
 
+// Dequeue handles legacy message dequeue requests.
 func (h *QueueHandler) Dequeue(response http.ResponseWriter, request *http.Request) {
 	h.legacyMessageOperation(response, request, false)
 }
 
+// Peek handles legacy message peek requests.
 func (h *QueueHandler) Peek(response http.ResponseWriter, request *http.Request) {
 	h.legacyMessageOperation(response, request, true)
 }
