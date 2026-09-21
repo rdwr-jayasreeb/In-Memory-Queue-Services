@@ -33,6 +33,12 @@ type queueResponse struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+type successResponse struct {
+	StatusCode int    `json:"status_code"`
+	Message    string `json:"message"`
+	Data       any    `json:"data,omitempty"`
+}
+
 // QueueHandler routes HTTP queue requests to a QueueService.
 type QueueHandler struct {
 	service service.QueueService
@@ -93,7 +99,7 @@ func (h *QueueHandler) createQueue(response http.ResponseWriter, request *http.R
 		writeError(response, http.StatusBadRequest, "invalid_queue_name", "Queue name must be 1-64 characters, alphanumeric, underscore, or hyphen")
 		return
 	}
-	writeJSON(response, http.StatusCreated, toQueueResponse(queue))
+	writeSuccess(response, http.StatusCreated, "Queue created successfully", toQueueResponse(queue))
 }
 
 func (h *QueueHandler) listQueues(response http.ResponseWriter, request *http.Request) {
@@ -106,7 +112,7 @@ func (h *QueueHandler) listQueues(response http.ResponseWriter, request *http.Re
 	for _, queue := range queues {
 		items = append(items, toQueueResponse(queue))
 	}
-	writeJSON(response, http.StatusOK, map[string][]queueResponse{"queues": items})
+	writeSuccess(response, http.StatusOK, "Queues retrieved successfully", map[string][]queueResponse{"queues": items})
 }
 
 func (h *QueueHandler) queueDetails(response http.ResponseWriter, request *http.Request, name string) {
@@ -116,7 +122,7 @@ func (h *QueueHandler) queueDetails(response http.ResponseWriter, request *http.
 		return
 	}
 	if request.Method == http.MethodGet {
-		writeJSON(response, http.StatusOK, toQueueResponse(queue))
+		writeSuccess(response, http.StatusOK, "Queue retrieved successfully", toQueueResponse(queue))
 		return
 	}
 	if request.Method == http.MethodDelete {
@@ -124,7 +130,7 @@ func (h *QueueHandler) queueDetails(response http.ResponseWriter, request *http.
 			h.writeQueueLookupError(response, name, err)
 			return
 		}
-		response.WriteHeader(http.StatusNoContent)
+		writeSuccess(response, http.StatusOK, "Queue deleted successfully", nil)
 		return
 	}
 	writeError(response, http.StatusMethodNotAllowed, "invalid_request", "Method not allowed")
@@ -140,14 +146,14 @@ func (h *QueueHandler) messageResource(response http.ResponseWriter, request *ht
 			h.writeMessageOperationError(response, name, err)
 			return
 		}
-		writeJSON(response, http.StatusOK, message)
+		writeSuccess(response, http.StatusOK, "Message dequeued successfully", message)
 	case http.MethodGet:
 		message, err := h.service.Peek(request.Context(), name)
 		if err != nil {
 			h.writeMessageOperationError(response, name, err)
 			return
 		}
-		writeJSON(response, http.StatusOK, message)
+		writeSuccess(response, http.StatusOK, "Message retrieved successfully", message)
 	default:
 		writeError(response, http.StatusMethodNotAllowed, "invalid_request", "Method not allowed")
 	}
@@ -186,7 +192,7 @@ func (h *QueueHandler) enqueueInput(response http.ResponseWriter, request *http.
 		}
 		return
 	}
-	writeJSON(response, http.StatusCreated, message)
+	writeSuccess(response, http.StatusCreated, "Message enqueued successfully", message)
 }
 
 func (h *QueueHandler) writeQueueLookupError(response http.ResponseWriter, name string, err error) {
@@ -257,8 +263,20 @@ func writeJSON(response http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(response).Encode(value)
 }
 
+func writeSuccess(response http.ResponseWriter, status int, message string, data any) {
+	writeJSON(response, status, successResponse{
+		StatusCode: status,
+		Message:    message,
+		Data:       data,
+	})
+}
+
 func writeError(response http.ResponseWriter, status int, code, message string) {
-	writeJSON(response, status, map[string]string{"error": code, "message": message})
+	writeJSON(response, status, map[string]any{
+		"status_code": status,
+		"error":       code,
+		"message":     message,
+	})
 }
 
 func decodeJSON(body io.Reader, target any) error {
@@ -295,7 +313,7 @@ func (h *QueueHandler) DeleteQueue(response http.ResponseWriter, request *http.R
 		h.writeQueueLookupError(response, name, err)
 		return
 	}
-	response.WriteHeader(http.StatusNoContent)
+	writeSuccess(response, http.StatusOK, "Queue deleted successfully", nil)
 }
 
 // Enqueue handles legacy message enqueue requests.
@@ -349,5 +367,5 @@ func (h *QueueHandler) legacyMessageOperation(response http.ResponseWriter, requ
 		h.writeMessageOperationError(response, name, err)
 		return
 	}
-	writeJSON(response, http.StatusOK, message)
+	writeSuccess(response, http.StatusOK, "Message retrieved successfully", message)
 }

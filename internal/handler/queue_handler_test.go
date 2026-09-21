@@ -15,7 +15,9 @@ func TestQueueAndMessageResourceContract(t *testing.T) {
 	queueHandler := NewQueueHandler(service.NewQueueService(repository.NewMemoryRepository(), 10))
 
 	createResponse := request(queueHandler.Queues, http.MethodPost, "/queues", `{"name":"orders","max_depth":10}`)
-	if createResponse.Code != http.StatusCreated {
+	if createResponse.Code != http.StatusCreated ||
+		!bytes.Contains(createResponse.Body.Bytes(), []byte(`"status_code":201`)) ||
+		!bytes.Contains(createResponse.Body.Bytes(), []byte(`"message":"Queue created successfully"`)) {
 		t.Fatalf("expected create status 201, got %d", createResponse.Code)
 	}
 
@@ -30,7 +32,10 @@ func TestQueueAndMessageResourceContract(t *testing.T) {
 	}
 
 	peekResponse := request(queueHandler.QueueResource, http.MethodGet, "/queues/orders/messages", "")
-	if peekResponse.Code != http.StatusOK || !bytes.Contains(peekResponse.Body.Bytes(), []byte(`"body":"first"`)) {
+	if peekResponse.Code != http.StatusOK ||
+		!bytes.Contains(peekResponse.Body.Bytes(), []byte(`"status_code":200`)) ||
+		!bytes.Contains(peekResponse.Body.Bytes(), []byte(`"message":"Message retrieved successfully"`)) ||
+		!bytes.Contains(peekResponse.Body.Bytes(), []byte(`"body":"first"`)) {
 		t.Fatalf("expected peeked message, got %d %s", peekResponse.Code, peekResponse.Body.String())
 	}
 
@@ -46,8 +51,10 @@ func TestQueueAndMessageResourceContract(t *testing.T) {
 	assertError(t, missingResponse, http.StatusNotFound, "queue_not_found")
 
 	deleteResponse := request(queueHandler.QueueResource, http.MethodDelete, "/queues/orders", "")
-	if deleteResponse.Code != http.StatusNoContent || deleteResponse.Body.Len() != 0 {
-		t.Fatalf("expected empty 204 delete response, got %d %s", deleteResponse.Code, deleteResponse.Body.String())
+	if deleteResponse.Code != http.StatusOK ||
+		!bytes.Contains(deleteResponse.Body.Bytes(), []byte(`"status_code":200`)) ||
+		!bytes.Contains(deleteResponse.Body.Bytes(), []byte(`"message":"Queue deleted successfully"`)) {
+		t.Fatalf("expected successful delete response, got %d %s", deleteResponse.Code, deleteResponse.Body.String())
 	}
 }
 
@@ -62,7 +69,7 @@ func assertError(t *testing.T, response *httptest.ResponseRecorder, status int, 
 	if response.Code != status {
 		t.Fatalf("expected status %d, got %d: %s", status, response.Code, response.Body.String())
 	}
-	var payload map[string]string
+	var payload map[string]any
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode error response: %v", err)
 	}
