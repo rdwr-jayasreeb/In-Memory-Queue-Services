@@ -15,3 +15,11 @@ type Queue struct {
 	// CreatedAt records when the queue was created.
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// QueueDTO is the read-only queue metadata exposed by the service layer.
+type QueueDTO struct {
+	Name         string    `json:"name"`
+	MaxDepth     int       `json:"max_depth"`
+	MessageCount int       `json:"message_count"`
+	CreatedAt    time.Time `json:"created_at"`
+}

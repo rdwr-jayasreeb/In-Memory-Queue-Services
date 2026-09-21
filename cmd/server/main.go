@@ -288,40 +288,19 @@ func main() {
 	// Create HTTP router.
 	mux := http.NewServeMux()
 
-	mux.HandleFunc(
-		"/queues",
-		queueHandler.Queues,
-	)
+	mux.HandleFunc("/queues", queueHandler.Queues)
 
-	mux.HandleFunc(
-		"/queues/",
-		queueHandler.QueueResource,
-	)
+	mux.HandleFunc("/queues/", queueHandler.QueueResource)
 
-	mux.HandleFunc(
-		"/queues/list",
-		queueHandler.ListQueues,
-	)
+	mux.HandleFunc("/queues/list", queueHandler.ListQueues)
 
-	mux.HandleFunc(
-		"/queues/delete",
-		queueHandler.DeleteQueue,
-	)
+	mux.HandleFunc("/queues/delete", queueHandler.DeleteQueue)
 
-	mux.HandleFunc(
-		"/queues/enqueue",
-		queueHandler.Enqueue,
-	)
+	mux.HandleFunc("/queues/enqueue", queueHandler.Enqueue)
 
-	mux.HandleFunc(
-		"/queues/dequeue",
-		queueHandler.Dequeue,
-	)
+	mux.HandleFunc("/queues/dequeue", queueHandler.Dequeue)
 
-	mux.HandleFunc(
-		"/queues/peek",
-		queueHandler.Peek,
-	)
+	mux.HandleFunc("/queues/peek", queueHandler.Peek)
 
 	// Create HTTP server.
 	server := &http.Server{

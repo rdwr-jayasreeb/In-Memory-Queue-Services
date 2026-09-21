@@ -14,6 +14,8 @@ var (
 	ErrInvalidQueueName = errors.New("invalid_queue_name")
 	// ErrQueueNotFound indicates that the requested queue does not exist.
 	ErrQueueNotFound = errors.New("Queue Not Found")
+	// ErrQueueAlreadyExists indicates that a queue name is already in use.
+	ErrQueueAlreadyExists = errors.New("queue already exists")
 	// ErrQueueEmpty indicates that no message is available.
 	ErrQueueEmpty = errors.New("queue is empty")
 	// ErrQueueFull indicates that a queue cannot accept another message.

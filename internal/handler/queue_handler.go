@@ -248,11 +248,11 @@ func writeContextError(response http.ResponseWriter, err error) bool {
 	}
 }
 
-func toQueueResponse(queue *model.Queue) queueResponse {
+func toQueueResponse(queue *model.QueueDTO) queueResponse {
 	return queueResponse{
 		Name:         queue.Name,
 		MaxDepth:     queue.MaxDepth,
-		MessageCount: queue.CurrentMsgs,
+		MessageCount: queue.MessageCount,
 		CreatedAt:    queue.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	}
 }

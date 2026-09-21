@@ -26,8 +26,8 @@ func TestEnqueueStoresAttributesAndEnqueuedAt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get queue: %v", err)
 	}
-	if queue.CurrentMsgs != 1 {
-		t.Fatalf("expected current message count 1, got %d", queue.CurrentMsgs)
+	if queue.MessageCount != 1 {
+		t.Fatalf("expected current message count 1, got %d", queue.MessageCount)
 	}
 
 	message, err := queueService.Peek(context.Background(), "orders")
@@ -87,8 +87,8 @@ func TestEnqueueGeneratesUniqueIDsAndDequeueIsFIFO(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get queue after dequeue: %v", err)
 	}
-	if queue.CurrentMsgs != 1 {
-		t.Fatalf("expected current message count 1 after dequeue, got %d", queue.CurrentMsgs)
+	if queue.MessageCount != 1 {
+		t.Fatalf("expected current message count 1 after dequeue, got %d", queue.MessageCount)
 	}
 }
 
@@ -135,8 +135,8 @@ func TestConcurrentEnqueueAndDequeueMaintainQueueState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get queue after enqueue: %v", err)
 	}
-	if queue.CurrentMsgs != 100 {
-		t.Fatalf("expected 100 messages after enqueue, got %d", queue.CurrentMsgs)
+	if queue.MessageCount != 100 {
+		t.Fatalf("expected 100 messages after enqueue, got %d", queue.MessageCount)
 	}
 
 	var dequeueGroup sync.WaitGroup
@@ -160,8 +160,8 @@ func TestConcurrentEnqueueAndDequeueMaintainQueueState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get queue after dequeue: %v", err)
 	}
-	if queue.CurrentMsgs != 0 || len(queue.Messages) != 0 {
-		t.Fatalf("expected empty queue after dequeue, got count=%d messages=%d", queue.CurrentMsgs, len(queue.Messages))
+	if queue.MessageCount != 0 {
+		t.Fatalf("expected empty queue after dequeue, got count=%d", queue.MessageCount)
 	}
 }
 
